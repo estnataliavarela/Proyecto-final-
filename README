@@ -8,19 +8,47 @@ Programa en C++ con OpenGL 3.3 que carga un modelo 3D en formato glTF, lo aplica
 
 ## Controles
 - **W / S**: avanzar / retroceder la cámara
-- **A / D**: moverse a la izquierda / derecha
+- **A / D**: mover a la izquierda / derecha
 - **Mouse**: girar la cámara
 - **ESC**: cerrar el programa
 
 ## Arquitectura del software
-- **Carga del modelo:** Assimp lee `scene.gltf` y genera una malla por cada parte del modelo (posición, normal y UV).
-- **Texturas:** stb_image carga `textures/sillon.jpeg`.
-- **Shaders:** un shader para el modelo con iluminación Phong (ambiente, difusa y especular) y un shader sencillo para dibujar la curva.
-- **Matrices:** modelo, vista y proyección. La matriz de modelo combina traslación sobre la curva y rotaciones.
-- **Curva de Bézier:** cuatro puntos de control. El sillón se ubica con `bezierPoint(t)` y se orienta con la tangente `bezierTangent(t)`.
+
+El programa tiene tres etapas dentro de `main`: **inicialización**, **bucle principal** y **limpieza**.
+
+### 1. Inicialización (`main`)
+- **Ventana:** `glfwInit` inicia GLFW y `glfwCreateWindow` crea la ventana de 800 × 800 píxeles, con OpenGL 3.3 core.
+- **OpenGL:** `gladLoadGLLoader` carga las funciones de OpenGL. `glEnable(GL_DEPTH_TEST)` activa la profundidad, para que lo que está adelante tape lo que está atrás.
+- **Shaders:** se crean dos objetos `Shader`, uno para el sillón y otro para la curva.
+- **Curva:** se calculan 101 puntos con `bezierPoint` y se suben a la GPU con su propio VAO y VBO.
+- **Textura:** `stbi_load` lee `textures/sillon.jpeg` y `glTexImage2D` la sube a la GPU. Si no se encuentra, se usa un color de respaldo.
+- **Modelo:** `importer.ReadFile("scene.gltf", ...)` carga el modelo con Assimp, con las opciones `aiProcess_Triangulate`, `aiProcess_FlipUVs`, `aiProcess_GenSmoothNormals` y `aiProcess_FixInfacingNormals`. Si funciona, `processNode` crea las mallas.
+
+### 2. Bucle principal (`main`)
+Se repite en cada cuadro hasta cerrar la ventana:
+1. **Tiempo:** se calcula `deltaTime`, el tiempo desde el cuadro anterior.
+2. **Teclado:** `processInput` mueve la cámara.
+3. **Limpieza de pantalla:** `glClear` borra el color y la profundidad.
+4. **Cámara:** `glm::perspective` crea la proyección y `glm::lookAt` la vista.
+5. **Posición:** `fmod` da un valor de 0 a 1 que se repite cada 10 segundos. Con `bezierPoint` se obtiene la posición del sillón y con `bezierTangent` su dirección. `atan2` calcula el ángulo para que mire hacia donde avanza.
+6. **Matriz de modelo:** se aplican cuatro transformaciones, de adentro hacia afuera: `translate` lo mueve a su punto de la curva, `rotate` con el ángulo lo orienta, `rotate` de -90° en X corrige la orientación inicial, y `rotate` con `currentFrame * 0.4` en Z lo hace girar sobre sí mismo.
+7. **Dibujo del sillón:** `modelShader.Use()` activa el shader, `SetMat4` envía `uMVP`, `uModel` y `uView`, y `glDrawElements` dibuja cada malla.
+8. **Dibujo de la curva:** `curveShader.Use()` activa el shader de la curva, se envía `projection * view` y `glDrawArrays` la dibuja como línea.
+9. **Cuadro:** `glfwSwapBuffers` muestra el cuadro terminado y `glfwPollEvents` revisa teclado y mouse.
+
+### 3. Limpieza (`main`)
+Al cerrar la ventana se borran los VAO, VBO y EBO de cada malla, los de la curva y los shaders. Luego se destruye la ventana y se cierra GLFW.
+
+### Componentes
+- **Carga del modelo:** Assimp lee `scene.gltf`. `processNode` recorre el árbol del modelo y `processMesh` convierte cada malla en datos para OpenGL: posición, normal y coordenadas de textura, guardados en un VAO, VBO y EBO. Cada vértice ocupa 8 valores.
+- **Texturas:** stb_image lee la imagen y OpenGL la aplica a las mallas.
+- **Shaders:** la clase `Shader` de `Shader.h` compila el vertex y el fragment shader, los une en un programa y envía matrices con `SetMat4`. El shader del sillón aplica iluminación Phong: luz ambiente, difusa y especular, con la luz en una posición fija.
+- **Matrices:** proyección, vista y modelo. La de modelo combina traslación sobre la curva y rotaciones.
+- **Curva de Bézier:** cuatro puntos de control. `bezierPoint(t)` da la posición y `bezierTangent(t)` la dirección.
+- **Cámara:** `processInput` mueve la posición con el teclado, y `mouse_callback` cambia los ángulos `yaw` y `pitch` para girar la vista. `pitch` se limita entre -89° y 89°.
 
 ## Dependencias
-- GLAD (OpenGL 3.3 core)
+- GLAD (núcleo de OpenGL 3.3)
 - GLFW
 - GLM
 - Assimp
@@ -28,4 +56,4 @@ Programa en C++ con OpenGL 3.3 que carga un modelo 3D en formato glTF, lo aplica
 
 ## Cómo ejecutar
 1. Compila el proyecto en Visual Studio (x64, Debug).
-2. Ejecuta desde una carpeta que contenga `scene.gltf`, su `.bin`, y `textures/sillon.jpeg`.
+2. Ejecuta desde una carpeta que contenga `scene.gltf`, su `.bin` y `textures/sillon.jpeg`.
